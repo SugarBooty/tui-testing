@@ -1,0 +1,227 @@
+use sysinfo::{SystemExt};
+use std::alloc::System;
+use std::{thread, time};
+use indexmap::IndexMap;
+use fast_math;
+use std::collections::HashMap;
+
+use std::io;
+// use termion::raw::IntoRawMode;
+use tui::Terminal;
+use tui::backend::TermionBackend;
+use tui::widgets::{Block, Borders, Chart, Dataset, Axis};
+use tui::layout::{Layout, Constraint, Direction};
+use tui::style::{Color, Modifier, Style};
+use tui::symbols;
+
+mod get_data;
+use get_data::temps;
+
+mod tui_main;
+use tui_main::main;
+
+fn main() -> Result<(), io::Error> {
+
+    // test();
+    
+    
+    let stdout = io::stdout();
+    let backend = TermionBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+    
+    let mut temp_his: IndexMap< String, Vec< (f64, f64) > > = IndexMap::new();
+    let mut itt:f64 = 0.0;
+    let mut minmax = (100.0, 0.0);
+
+    let mut system = sysinfo::System::new();
+
+    let mut temp_handler = TempMaps::new(&mut system);
+
+    print!("{esc}c", esc = 27 as char);
+    // println!("{:?}", get_temps());
+    loop {
+        draw_display(&mut terminal, &mut temp_handler, &mut system);
+        thread::sleep(time::Duration::from_millis(500));
+        // temp_handler.append_temps(&mut system);
+        // println!("x bounds {:?} y bounds{:?}", temp_handler.x_minmax, temp_handler.y_minmax)
+    }
+    Ok(())
+}
+
+// fn test() {
+//     let mut temp_his: IndexMap< String, Vec< (f64, f64) > > = IndexMap::new();
+//     temp_his.insert("val1".to_string(), vec![(0.0, 39.0), (1.0, 40.0), (2.0, 50.0)]);
+//     temp_his.insert("val2".to_string(), vec![(20.0, 29.0), (21.0, 30.0), (22.0, 40.0)]);
+//     assert_eq!(smooth_data(&mut temp_his), temp_his);
+// }
+
+fn draw_display<'a>(term: &mut tui::Terminal<tui::backend::TermionBackend<std::io::Stdout>>, temp_handler: &mut TempMaps, system: &mut sysinfo::System)  {
+    // *itt += 1.0;
+    // append_temp_data(temp_his, *itt);
+    // println!("{:?}", temp_his);
+
+    temp_handler.append_temps(system);
+
+
+    term.draw(|f| {
+        // let size = f.size();
+        // let chunks = Layout::default()
+        //     .direction(Direction::Vertical)
+        //     .margin(1)
+        //     .constraints([
+        //         Constraint::Percentage(25),
+        //         Constraint::Percentage(25),
+        //         Constraint::Percentage(25),
+        //         Constraint::Percentage(25),
+        //     ].as_ref() )
+        //     .split(f.size());
+
+        // let core1 = temp_his.get("Core 1").unwrap();
+
+        let mut datasets:Vec<tui::widgets::Dataset> = vec![];
+        // let mut x_bounds: [f64; 2] = [0.0, 0.0];
+        let mut color_iter = [Color::Red, Color::Green, Color::Blue, Color::Yellow, Color::White, Color::Cyan, Color::Green, Color::Blue].iter();
+        // let smooth_history = smooth_data(temp_his, minmax).clone();
+
+        for (device_name, device_history) in &temp_handler.maps {
+            datasets.push(
+                Dataset::default()
+                .name(device_name)
+                .marker(symbols::Marker::Braille)
+                .style(Style::default().fg(*color_iter.next().unwrap()))
+                // .style(Style::default().fg(Color::Cyan))
+                .data(&device_history[..])
+            );
+            //     let constant = device_history.len() / 80;
+            //     x_bounds[0] = device_history[constant].0;
+
+            // x_bounds[1] = device_history.last().unwrap().0;
+            
+        }
+        // println!("{:?}", datasets);
+
+            
+        let chart = Chart::new(datasets)
+            .block(Block::default().borders(Borders::ALL)
+            .title("Package Temp"))
+            .x_axis(Axis::default()
+                .title("X Axis")
+                .bounds(temp_handler.x_minmax)
+                // .labels(&[0.0, 15.0, 30.0, 45.0, 60.0])
+            )
+            .y_axis(Axis::default()
+                .title(format!("{}", "d"))
+                // .bounds([minmax.0, minmax.1])
+                .bounds(temp_handler.y_minmax)
+                // .labels([0.0, 25.0, 50.0, 100.0])
+            );
+        f.render_widget(chart, f.size());
+
+
+    }).unwrap();
+    // *minmax = (100.0, 0.0);
+}
+
+
+#[derive(Debug, Default)]
+struct TempEntry {
+    name: String,
+    last_t: f32,
+}
+
+fn get_temps() -> Vec< TempEntry > {
+    let mut system = sysinfo::System::new();
+    system.refresh_system();
+    let mut temp_vector: Vec< TempEntry > = vec![];
+    for core in system.get_components_list() {
+        temp_vector.push(TempEntry{ name: core.label.to_owned(), last_t: core.temperature });
+    }
+
+    temp_vector
+}
+
+
+fn append_temp_data( history: &mut IndexMap< String, Vec< (f64, f64) > >, itteration: f64) {
+    let temp_data = get_temps();
+    for entry in temp_data {
+        let temp_vec = history.entry(entry.name).or_default();
+        
+        temp_vec.push((itteration as f64, entry.last_t as f64));
+
+        // trims the oldest data when it gets too long
+        while temp_vec.len() > 300 {
+            temp_vec.remove(0);
+        }
+    }
+}
+
+fn smooth_data<'a>(history: &'a IndexMap< String, Vec<(f64, f64)> >, minmax: &mut (f64, f64) ) -> IndexMap< String, Vec< (f64, f64) > > {
+    let mut smooth_history: IndexMap< String, Vec< (f64, f64) > >  = IndexMap::new();
+    let multiplier_range = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
+
+    for (component_name, component_temps) in history {
+
+        // let temp_coord_iterator = component_temps.iter();
+        let mut rolling_average:Vec<f64> = vec![];                           // implement rolling average to smoothing
+        let mut rolling_average2:Vec<f64> = vec![];                           // implement rolling average to smoothing
+        let mut smooth_temps: Vec< (f64, f64) > = vec![];
+        let mut prev_x_y_pair:(f64, f64) = (-69.0, -69.0);
+
+        for curr_x_y_pair_raw in component_temps {
+            let curr_x_y_pair = &( curr_x_y_pair_raw.0, roll_average(&mut rolling_average, curr_x_y_pair_raw.1, 2));
+
+
+
+            // min max logic
+            if curr_x_y_pair_raw.1 as f64 > minmax.1 {
+                minmax.1 = curr_x_y_pair_raw.1 as f64 + 1.0;
+            }
+            if minmax.0 > curr_x_y_pair_raw.1 as f64 {
+                minmax.0 = curr_x_y_pair_raw.1 as f64 - 1.0;
+            }
+            
+            // if its the first itteration, set data and skip to next cycle
+            if prev_x_y_pair == (-69.0, -69.0) {
+                prev_x_y_pair = *curr_x_y_pair;
+            } else {
+                // calculate rate of change
+                let difference = ( curr_x_y_pair.1 - prev_x_y_pair.1 ).abs();
+                // adds an offset to the different components so they dont overlap as much
+                // let vertical_offset:f64;
+                // match &component_name[..] {
+                //     "Core 0" => vertical_offset = 0.1,
+                //     "Core 1" => vertical_offset = 0.0,
+                //     "Core 2" => vertical_offset = -0.1,
+                //     "Core 3" => vertical_offset = -0.2,
+                //     _ => vertical_offset = 0.3,
+
+                // }  
+                // puts filler lines between data points
+                for multiplier in calculate_filler_dots(difference) {
+                    let assumed_x = ( (curr_x_y_pair.0 - prev_x_y_pair.0) * multiplier ) + prev_x_y_pair.0 ;
+                    // let assumed_y = ( (curr_x_y_pair.1 - prev_x_y_pair.1) * multiplier ) + prev_x_y_pair.1 + vertical_offset ;
+                    let assumed_y = roll_average(&mut rolling_average2, curr_x_y_pair.1, 32);
+                    smooth_temps.push((assumed_x, assumed_y));
+                }
+                smooth_history.insert(component_name.to_owned(), smooth_temps.to_owned());
+                prev_x_y_pair = *curr_x_y_pair; // sets the "previous" pair to the current one right before the next cycle 
+            }
+            
+        }
+    }
+
+
+    smooth_history
+}
+
+
+
+fn roll_average( average_vec: &mut Vec< f64 >, num_to_add: f64, smoothing_buffer: usize ) -> f64 {
+    average_vec.push(num_to_add);
+    while average_vec.len() > smoothing_buffer {
+        average_vec.remove(0);
+    }
+    // create iterator summation and divide by len of average_vec
+    let output:f64 = average_vec.iter().sum::<f64>() / smoothing_buffer as f64;
+    output
+}
