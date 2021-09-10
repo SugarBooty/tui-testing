@@ -22,6 +22,34 @@ pub mod cpu_graph {
 
     use crate::temps::{TempMaps};
 
+    struct ChartColor {
+        color_vec: Vec< Color >,
+        itt_count: usize,
+    }
+
+    impl ChartColor {
+        fn new() -> ChartColor{
+            ChartColor {
+                color_vec: vec![
+                    Color::Red,
+                    Color::Yellow,
+                    Color::Green,
+                    Color::Blue,
+                    Color::Cyan,
+                ],
+                itt_count: 0,
+            }
+        }
+        fn next(&mut self) -> Color {
+            let return_color: Color = self.color_vec[self.itt_count];
+            self.itt_count += 1;
+            if self.itt_count >= self.color_vec.len() {
+                self.itt_count = 0;
+            }
+            return_color
+        }
+    }
+
     pub struct CpuGraph<'a> {
         datasets: Vec<Dataset<'a> >,
         x_bounds: [f64; 2],
@@ -37,13 +65,14 @@ pub mod cpu_graph {
             }
         }
         pub fn set_data( &mut self, temp_map: &'a mut TempMaps ) {
-            let mut color_iter = [Color::Red, Color::Green, Color::Blue, Color::Yellow, Color::White, Color::Cyan, Color::Green, Color::Blue].iter();
+            // let mut color_iter = [Color::Red, Color::Green, Color::Blue, Color::Yellow, Color::White, Color::Cyan, Color::Green, Color::Blue].iter();
+            let mut color_iter = ChartColor::new();
             for (name, vec_map) in &temp_map.maps {
                 self.datasets.push(
                     Dataset::default()
                     .name(name)
                     .marker(symbols::Marker::Braille)
-                    .style(Style::default().fg(*color_iter.next().unwrap()))
+                    .style(Style::default().fg(color_iter.next()))
                     .data(&vec_map[..])
                 )
             }
