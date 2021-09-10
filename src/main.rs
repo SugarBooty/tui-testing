@@ -1,5 +1,5 @@
 use std::{thread, time};
-use sysinfo::{SystemExt};
+use sysinfo::{RefreshKind, SystemExt};
 
 
 mod get_data;
@@ -9,13 +9,13 @@ mod tui_main;
 use tui_main::main::{Display};
 
 fn main() {
-    let mut s = sysinfo::System::new();
+    let s = sysinfo::System::new_with_specifics(RefreshKind::new().with_components_list());
     let mut temp_handler = TempMaps::new(s);
     let mut display_manager = Display::new(&mut temp_handler);
     print!("{esc}c", esc = 27 as char);
     loop {
         display_manager.draw_display();
-        // temp_handler.append_temps();
+        // temp_handler.refresh_temps();
         thread::sleep(time::Duration::from_millis(500));
     }
 }

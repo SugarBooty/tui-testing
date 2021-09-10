@@ -1,5 +1,5 @@
 pub mod temps {
-    use sysinfo::{Component, System, SystemExt};
+    use sysinfo::{ComponentExt, System, SystemExt};
     
     use indexmap::IndexMap;
     use std::{collections::HashMap, ops::Deref};
@@ -34,25 +34,30 @@ pub mod temps {
         // refreshes the sysinfo instance with temp data,
         // if its a core's temperature, push it into smooth_and_append
         pub fn refresh_temps(&mut self) {
-            self.system.refresh_system();
-            for core in self.system.get_components_list() {
-                if !core.label.contains("Core") {
+            self.system.refresh_components_list();
+            let mut comp_vec: Vec<(String, f64)> = vec![];
+            for core in self.system.components() {
+                comp_vec.push((core.label().to_owned(), core.temperature().to_owned() as f64));
+                // println!("{:?}", core);
+            }
+            for (comp_name, comp_temp) in comp_vec {
+                if !comp_name.contains("Core") {
                     continue
                 }
                 let next_val: (f64, f64);
-                let last_val = self.last_pair.get(&core.label);
+                let last_val = self.last_pair.get(&comp_name);
                 if last_val.is_none() {
-                    next_val = (1.0, core.temperature as f64);
-                    self.maps.insert(core.label.to_owned(), vec![ next_val ]);
-                    self.last_pair.insert(core.label.to_owned(), next_val);
+                    next_val = (1.0, comp_temp);
+                    self.maps.insert(comp_name.to_owned(), vec![ next_val ]);
+                    self.last_pair.insert(comp_name.to_owned(), next_val);
                 } else {
                     let last_val = last_val.unwrap().to_owned();
                     next_val = (
                         last_val.0 + 1.0,
-                        core.temperature as f64
+                        comp_temp
                     );
-                    self.last_pair.insert(core.label.to_owned(), next_val);
-                    self.smooth_and_append(last_val.to_owned(), next_val.to_owned(), core.label.to_owned());
+                    self.last_pair.insert(comp_name.to_owned(), next_val);
+                    self.smooth_and_append(last_val.to_owned(), next_val.to_owned(), comp_name.to_owned());
                 }
                 
             }
