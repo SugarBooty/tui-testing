@@ -15,9 +15,14 @@ after that, running the get_graph method will return a Chart object used in the 
 */
 
 pub mod cpu_graph {
+    use std::fmt::format;
+
+    use tui::text::Span;
     use tui::widgets::{Block, Borders, Chart, Dataset, Axis};
     // use tui::layout::{Layout, Constraint, Direction};
     use tui::style::{Color, /*Modifier,*/ Style};
+    use tui::widgets::BorderType::Rounded;
+    use tui::widgets::GraphType::Line;
     use tui::symbols;
 
     use crate::temps::{TempMaps};
@@ -54,6 +59,8 @@ pub mod cpu_graph {
         datasets: Vec<Dataset<'a> >,
         x_bounds: [f64; 2],
         y_bounds: [f64; 2],
+        x_labels: Vec<Span<'a>>,
+
     }
     impl<'a> CpuGraph<'a> {
         pub fn new() -> CpuGraph<'a> {
@@ -61,7 +68,7 @@ pub mod cpu_graph {
                 datasets: vec![],
                 x_bounds: [0.0; 2],
                 y_bounds: [0.0; 2],
-                
+                x_labels: vec![],
             }
         }
         pub fn set_data( &mut self, temp_map: &'a mut TempMaps ) {
@@ -79,17 +86,36 @@ pub mod cpu_graph {
             self.x_bounds = temp_map.x_minmax;
             self.y_bounds = temp_map.y_minmax;
         }
+        fn x_labels(self) -> Vec<Span<'a>>{
+            vec![
+                Span::styled("first", Style::default())
+            ]
+        }
         pub fn get_graph(&mut self) -> Chart<'a> {
                 Chart::new((*self.datasets).to_vec())
-                .block(Block::default().borders(Borders::ALL)
-                .title("CPU Core Temps"))
+                .block(Block::default().border_type(Rounded).borders(Borders::ALL)
+                // .title("CPU Core Temps")
+            )
                 .x_axis(
                     Axis::default()
                     .bounds(self.x_bounds)
+                    // .labels(vec![
+                    //     Span::styled(format!("{}", self.x_bounds[0]), Style::default()),
+                    //     Span::styled("2", Style::default()),
+                    //     Span::styled(format!("{}", self.x_bounds[1]), Style::default()),
+                    // ])
                 )
                 .y_axis(
                     Axis::default()
                     .bounds(self.y_bounds)
+                    // FIXME make this use a function to be cleaner and allow logic
+                    .labels(vec![
+                        Span::styled(format!("{:.0}", self.y_bounds[0]), Style::default()),
+                        Span::styled(format!("{:.0}", ((self.y_bounds[1]-self.y_bounds[0]) / 4.0) + self.y_bounds[0]), Style::default()),
+                        Span::styled(format!("{:.0}", (((self.y_bounds[1]-self.y_bounds[0]) / 4.0) * 2.0 )+ self.y_bounds[0]), Style::default()),
+                        Span::styled(format!("{:.0}", (((self.y_bounds[1]-self.y_bounds[0]) / 4.0) * 3.0 )+ self.y_bounds[0]), Style::default()),
+                        Span::styled(format!("{:.0}", self.y_bounds[1]), Style::default()),
+                    ])
                 )
         }
     }
