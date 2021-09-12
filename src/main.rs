@@ -16,6 +16,6 @@ fn main() {
     loop {
         display_manager.draw_display();
         // temp_handler.refresh_temps();
-        thread::sleep(time::Duration::from_millis(500));
+        thread::sleep(time::Duration::from_millis(1000));
     }
 }

@@ -15,14 +15,12 @@ after that, running the get_graph method will return a Chart object used in the 
 */
 
 pub mod cpu_graph {
-    use std::fmt::format;
 
     use tui::text::Span;
     use tui::widgets::{Block, Borders, Chart, Dataset, Axis};
     // use tui::layout::{Layout, Constraint, Direction};
     use tui::style::{Color, /*Modifier,*/ Style};
     use tui::widgets::BorderType::Rounded;
-    use tui::widgets::GraphType::Line;
     use tui::symbols;
 
     use crate::temps::{TempMaps};
@@ -59,7 +57,6 @@ pub mod cpu_graph {
         datasets: Vec<Dataset<'a> >,
         x_bounds: [f64; 2],
         y_bounds: [f64; 2],
-        x_labels: Vec<Span<'a>>,
 
     }
     impl<'a> CpuGraph<'a> {
@@ -68,7 +65,6 @@ pub mod cpu_graph {
                 datasets: vec![],
                 x_bounds: [0.0; 2],
                 y_bounds: [0.0; 2],
-                x_labels: vec![],
             }
         }
         pub fn set_data( &mut self, temp_map: &'a mut TempMaps ) {
@@ -86,9 +82,31 @@ pub mod cpu_graph {
             self.x_bounds = temp_map.x_minmax;
             self.y_bounds = temp_map.y_minmax;
         }
-        fn x_labels(self) -> Vec<Span<'a>>{
+        fn x_labels(&self) -> Vec< Span<'a> > {
+            let mut result_vec = vec![];
+            // TODO make this use time instead of relying on a set delay
+            if (self.x_bounds[1] as usize - self.x_bounds[0] as usize) < 60 {
+                result_vec.push(Span::styled(format!("{:.0}\"", self.x_bounds[1]), Style::default()));
+                result_vec.push(Span::styled(format!("{:.0}\"", ((self.x_bounds[1] - self.x_bounds[0]) / 2.0)), Style::default()));
+                result_vec.push(Span::styled("now", Style::default()));
+            } else {
+                let begin_time = self.x_bounds[1] as u64;
+                let middle_time = ((self.x_bounds[1] - self.x_bounds[0]) / 2.0) as u64;
+                let leftmost = format!("-{:.0}\'{:.0}\"", begin_time / 60, begin_time % 60);
+                let middle = format!("-{:.0}\'{:.0}\"", middle_time / 60, middle_time % 60);
+                result_vec.push(Span::styled(leftmost, Style::default()));
+                result_vec.push(Span::styled(middle, Style::default()));
+                result_vec.push(Span::styled("now", Style::default()));
+            }
+            result_vec
+        }
+        fn y_labels(&self) -> Vec< Span<'a> > {
             vec![
-                Span::styled("first", Style::default())
+                Span::styled(format!("{:.0}", self.y_bounds[0]), Style::default()),
+                Span::styled(format!("{:.0}", ((self.y_bounds[1]-self.y_bounds[0]) / 4.0) + self.y_bounds[0]), Style::default()),
+                Span::styled(format!("{:.0}", (((self.y_bounds[1]-self.y_bounds[0]) / 4.0) * 2.0 )+ self.y_bounds[0]), Style::default()),
+                Span::styled(format!("{:.0}", (((self.y_bounds[1]-self.y_bounds[0]) / 4.0) * 3.0 )+ self.y_bounds[0]), Style::default()),
+                Span::styled(format!("{:.0}", self.y_bounds[1]), Style::default()),
             ]
         }
         pub fn get_graph(&mut self) -> Chart<'a> {
@@ -99,23 +117,18 @@ pub mod cpu_graph {
                 .x_axis(
                     Axis::default()
                     .bounds(self.x_bounds)
+                    // might not need/want X axis labels
                     // .labels(vec![
                     //     Span::styled(format!("{}", self.x_bounds[0]), Style::default()),
                     //     Span::styled("2", Style::default()),
                     //     Span::styled(format!("{}", self.x_bounds[1]), Style::default()),
                     // ])
+                    .labels(self.x_labels())
                 )
                 .y_axis(
                     Axis::default()
                     .bounds(self.y_bounds)
-                    // FIXME make this use a function to be cleaner and allow logic
-                    .labels(vec![
-                        Span::styled(format!("{:.0}", self.y_bounds[0]), Style::default()),
-                        Span::styled(format!("{:.0}", ((self.y_bounds[1]-self.y_bounds[0]) / 4.0) + self.y_bounds[0]), Style::default()),
-                        Span::styled(format!("{:.0}", (((self.y_bounds[1]-self.y_bounds[0]) / 4.0) * 2.0 )+ self.y_bounds[0]), Style::default()),
-                        Span::styled(format!("{:.0}", (((self.y_bounds[1]-self.y_bounds[0]) / 4.0) * 3.0 )+ self.y_bounds[0]), Style::default()),
-                        Span::styled(format!("{:.0}", self.y_bounds[1]), Style::default()),
-                    ])
+                    .labels(self.y_labels())
                 )
         }
     }
